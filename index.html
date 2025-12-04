@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staging Environment | Deployment Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script> <!-- Included just in case, though we use Canvas API for performance here -->
+
+    <style>
+        :root {
+            --neon-cyan: #06b6d4;
+            --neon-purple: #8b5cf6;
+        }
+        body {
+            background-color: #030712; /* Slate 950 */
+            color: #e2e8f0;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Prevent scroll on the game area */
+            margin: 0;
+            cursor: crosshair;
+        }
+        h1, h2, h3, .font-display {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        
+        /* Glassmorphism Utilities */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .glass-button {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        .glass-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* Scanline Effect */
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.1) 50%,
+                rgba(0,0,0,0.1)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0.3;
+        }
+
+        /* Glitch Animation for Text */
+        .glitch-wrapper:hover .glitch-text {
+            animation: glitch 0.3s cubic-bezier(.25, .46, .45, .94) both infinite;
+            color: var(--neon-cyan);
+        }
+
+        @keyframes glitch {
+            0% { transform: translate(0) }
+            20% { transform: translate(-2px, 2px) }
+            40% { transform: translate(-2px, -2px) }
+            60% { transform: translate(2px, 2px) }
+            80% { transform: translate(2px, -2px) }
+            100% { transform: translate(0) }
+        }
+
+        /* Canvas z-index */
+        #interactive-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .content-layer {
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Utility specific for the console text */
+        .blinking-cursor::after {
+            content: '_';
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+    </style>
+</head>
+<body class="h-screen w-screen selection:bg-cyan-500 selection:text-white">
+
+    <!-- Background Canvas Game -->
+    <canvas id="interactive-bg"></canvas>
+
+    <!-- Scanline Overlay -->
+    <div class="scanlines"></div>
+
+    <!-- Main UI Container -->
+    <div class="content-layer h-full flex flex-col justify-between p-6 md:p-12">
+        
+        <!-- Header -->
+        <header class="flex justify-between items-start animate-fade-in-down">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 glass-panel rounded-full flex items-center justify-center text-cyan-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+                </div>
+                <div>
+                    <h3 class="font-display font-bold text-xl tracking-wider uppercase text-white">Staging<span class="text-cyan-400">Hub</span></h3>
+                    <p class="text-xs text-gray-400 font-mono tracking-widest">VER 2.4.0 // PRE-PRODUCTION</p>
+                </div>
+            </div>
+
+            <div class="hidden md:flex flex-col items-end">
+                <div class="flex items-center gap-2">
+                    <span class="relative flex h-3 w-3">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    </span>
+                    <span class="text-xs font-mono text-emerald-400">SYSTEM NORMAL</span>
+                </div>
+                <div class="text-xs text-gray-500 font-mono mt-1" id="clock">00:00:00 UTC</div>
+            </div>
+        </header>
+
+        <!-- Center Content -->
+        <main class="flex-grow flex flex-col justify-center items-center text-center max-w-4xl mx-auto w-full relative">
+            
+            <!-- Floating Label -->
+            <div class="absolute top-10 md:top-20 animate-bounce duration-[3000ms]">
+                <span class="px-3 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-[10px] tracking-[0.2em] font-bold uppercase backdrop-blur-sm">
+                    Interactive Sandbox
+                </span>
+            </div>
+
+            <!-- Main Title Card -->
+            <div class="glass-panel p-8 md:p-12 rounded-2xl w-full max-w-2xl transform transition hover:scale-[1.01] duration-500 group">
+                <h1 class="font-display text-4xl md:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-200 to-gray-500 glitch-wrapper">
+                    <span class="glitch-text cursor-default">DEPLOYMENT</span><br>
+                    <span class="text-cyan-400 glitch-text cursor-default">AREA 51</span>
+                </h1>
+                
+                <p class="text-gray-400 text-sm md:text-lg mb-8 font-light leading-relaxed">
+                    You have entered the pre-production simulation grid. Applications here are volatile, experimental, and ready for client review.
+                    <br><span class="text-gray-500 text-xs mt-2 block">(Click surrounding tiles to analyze grid integrity)</span>
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button onclick="copyToClipboard('git clone repo-url.git')" class="glass-button rounded-lg py-4 px-6 text-sm font-mono text-gray-300 flex items-center justify-center gap-2 group-hover:border-cyan-500/30">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        <span>CLONE_REPO_ID</span>
+                    </button>
+                    
+                    <button class="bg-cyan-500 hover:bg-cyan-400 text-black font-bold py-4 px-6 rounded-lg text-sm font-mono flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_30px_rgba(6,182,212,0.6)]">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        INITIATE_TEST
+                    </button>
+                </div>
+            </div>
+
+            <!-- Console Output -->
+            <div class="mt-8 w-full max-w-xl text-left">
+                <div class="font-mono text-xs text-green-500/80 mb-1 opacity-70">Console Output ></div>
+                <div class="glass-panel p-4 rounded-lg font-mono text-xs text-gray-400 h-24 overflow-hidden relative">
+                    <div id="console-logs" class="absolute bottom-0 left-0 p-4 w-full">
+                        <p class="blinking-cursor">Waiting for input...</p>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Footer -->
+        <footer class="flex flex-col md:flex-row justify-between items-center text-xs text-gray-600 font-mono mt-8">
+            <div class="flex gap-4">
+                <span class="hover:text-cyan-400 cursor-pointer transition">PRIVACY_PROTOCOL</span>
+                <span class="hover:text-cyan-400 cursor-pointer transition">ACCESS_LOGS</span>
+            </div>
+            <div class="mt-2 md:mt-0">
+                RENDERED IN <span class="text-cyan-500">0.02ms</span> // SECURE CONNECTION
+            </div>
+        </footer>
+
+        <!-- Toast Notification (Hidden by default) -->
+        <div id="toast" class="fixed bottom-10 right-10 transform translate-y-20 opacity-0 transition-all duration-500 z-50">
+            <div class="glass-panel border-l-4 border-cyan-500 text-white px-6 py-4 rounded shadow-2xl flex items-center gap-3">
+                <svg class="text-cyan-400" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <span class="font-mono text-sm">COPIED TO CLIPBOARD</span>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- UTILITIES ---
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toISOString().split('T')[1].split('.')[0] + ' UTC';
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        function copyToClipboard(text) {
+            const tempInput = document.createElement("input");
+            tempInput.value = text;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand("copy"); // Fallback for iframe restrictions
+            document.body.removeChild(tempInput);
+            
+            showToast();
+            addLog("Clipboard buffer updated successfully.");
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 2000);
+        }
+
+        const logContainer = document.getElementById('console-logs');
+        const logs = [
+            "Initializing graphical interface...",
+            "Loading modules...",
+            "Connecting to secure gateway...",
+            "Environment ready."
+        ];
+        
+        let logIndex = 0;
+        function typeWriterLog() {
+            if(logIndex < logs.length) {
+                addLog(logs[logIndex]);
+                logIndex++;
+                setTimeout(typeWriterLog, 800 + Math.random() * 1000);
+            }
+        }
+
+        function addLog(text) {
+            const p = document.createElement('p');
+            p.className = 'text-gray-300 mb-1';
+            const timestamp = new Date().toLocaleTimeString('en-US', {hour12: false});
+            p.innerHTML = `<span class="text-gray-600">[${timestamp}]</span> ${text}`;
+            
+            // Remove blinking cursor from old last element
+            const oldCursor = logContainer.querySelector('.blinking-cursor');
+            if (oldCursor) oldCursor.classList.remove('blinking-cursor');
+            
+            p.classList.add('blinking-cursor');
+            logContainer.appendChild(p);
+
+            if(logContainer.children.length > 4) {
+                logContainer.removeChild(logContainer.children[0]);
+            }
+        }
+        setTimeout(typeWriterLog, 500);
+
+
+        // --- THE INTERACTIVE GRID GAME (ENTROPY GRID) ---
+        const canvas = document.getElementById('interactive-bg');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let cells = [];
+        let particles = [];
+        const cellSize = 40; // Size of grid squares
+        let mouse = { x: -1000, y: -1000 };
+
+        class Cell {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.baseColor = 'rgba(255, 255, 255, 0.03)';
+                this.activeColor = 'rgba(6, 182, 212, 0.2)'; // Cyan
+                this.health = 100; // 0 = broken
+                this.regenerationRate = 0.5;
+                this.brokenTimer = 0;
+            }
+
+            draw() {
+                if (this.health <= 0) {
+                    // Broken state (empty hole)
+                    return; 
+                }
+
+                ctx.fillStyle = this.health < 100 ? `rgba(6, 182, 212, ${this.health/400})` : this.baseColor;
+                
+                // If damaged, jitter slightly
+                let jitterX = 0, jitterY = 0;
+                if (this.health < 100) {
+                    jitterX = (Math.random() - 0.5) * 2;
+                    jitterY = (Math.random() - 0.5) * 2;
+                }
+
+                // Draw cell with gap
+                ctx.fillRect(this.x + 1 + jitterX, this.y + 1 + jitterY, cellSize - 2, cellSize - 2);
+            }
+
+            update() {
+                // Regeneration logic
+                if (this.health <= 0) {
+                    this.brokenTimer++;
+                    if (this.brokenTimer > 200) { // Respawn after frames
+                        this.health = 1;
+                        this.brokenTimer = 0;
+                        createParticles(this.x + cellSize/2, this.y + cellSize/2, 'respawn');
+                    }
+                    return;
+                }
+
+                if (this.health < 100) {
+                    this.health += this.regenerationRate;
+                }
+
+                // Mouse interaction
+                const dx = mouse.x - (this.x + cellSize/2);
+                const dy = mouse.y - (this.y + cellSize/2);
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < cellSize) {
+                    // Hover effect
+                    ctx.strokeStyle = 'rgba(6, 182, 212, 0.5)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(this.x + 2, this.y + 2, cellSize - 4, cellSize - 4);
+                }
+            }
+
+            damage() {
+                this.health -= 100; // Instant break
+                if (this.health <= 0) {
+                    this.health = 0;
+                    createParticles(this.x + cellSize/2, this.y + cellSize/2, 'break');
+                    addLog(`Grid node [${Math.floor(this.x/cellSize)},${Math.floor(this.y/cellSize)}] fractured.`);
+                }
+            }
+        }
+
+        class Particle {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * 3 + 1;
+                this.life = 1.0;
+                this.decay = Math.random() * 0.02 + 0.02;
+                this.size = Math.random() * 3 + 1;
+                
+                this.vx = Math.cos(this.angle) * this.speed;
+                this.vy = Math.sin(this.angle) * this.speed;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.type === 'break' ? '#06b6d4' : '#8b5cf6'; // Cyan for break, Purple for respawn
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        function createParticles(x, y, type) {
+            const count = type === 'break' ? 8 : 4;
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, type));
+            }
+        }
+
+        function initGrid() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            
+            cells = [];
+            const cols = Math.ceil(width / cellSize);
+            const rows = Math.ceil(height / cellSize);
+
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    cells.push(new Cell(i * cellSize, j * cellSize));
+                }
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw/Update Grid
+            cells.forEach(cell => {
+                cell.update();
+                cell.draw();
+            });
+
+            // Draw/Update Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Mouse Events
+        window.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            // Find clicked cell
+            const col = Math.floor(mouse.x / cellSize);
+            const row = Math.floor(mouse.y / cellSize);
+            
+            // Find specific cell object
+            const clickedCell = cells.find(c => Math.floor(c.x / cellSize) === col && Math.floor(c.y / cellSize) === row);
+            
+            if (clickedCell) {
+                clickedCell.damage();
+            }
+            
+            // Also damage neighbors for "Explosion" feel
+            cells.forEach(c => {
+                 const dx = mouse.x - (c.x + cellSize/2);
+                 const dy = mouse.y - (c.y + cellSize/2);
+                 if (Math.sqrt(dx*dx + dy*dy) < cellSize * 1.5) {
+                     c.damage();
+                 }
+            });
+        });
+
+        window.addEventListener('resize', initGrid);
+
+        // Initialization
+        initGrid();
+        animate();
+
+    </script>
+</body>
+</html>
